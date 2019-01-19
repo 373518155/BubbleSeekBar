@@ -11,11 +11,13 @@ import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
@@ -62,6 +64,9 @@ public class BubbleSeekBar extends View {
         int SIDES = 0, BOTTOM_SIDES = 1, BELOW_SECTION_MARK = 2;
     }
 
+    public static final int COLOR_PROGRESS_MIN = 0;
+    public static final int COLOR_PROGRESS_MAX = 255 * 7 - 1;
+
     private float mMin; // min
     private float mMax; // max
     private float mProgress; // real time value
@@ -94,6 +99,10 @@ public class BubbleSeekBar extends View {
     private long mAlwaysShowBubbleDelay; // the delay duration before bubble shows all the time
     private boolean isHideBubble; // hide bubble
     private boolean isRtl; // right to left
+    private boolean isColorPicker; // 是否是颜色拾取器
+    private float colorPickerGrdStartX; // 颜色拾取器的开始点
+    private float colorPickerGrdEndX;  // 颜色拾取器的结束点
+    LinearGradient linearGradient;
 
     private int mBubbleColor;// color of bubble
     private int mBubbleTextSize; // text size of bubble-progress
@@ -191,8 +200,14 @@ public class BubbleSeekBar extends View {
         mAlwaysShowBubbleDelay = duration < 0 ? 0 : duration;
         isHideBubble = a.getBoolean(R.styleable.BubbleSeekBar_bsb_hide_bubble, false);
         isRtl = a.getBoolean(R.styleable.BubbleSeekBar_bsb_rtl, false);
+        isColorPicker = a.getBoolean(R.styleable.BubbleSeekBar_bsb_is_color_picker, false);
         setEnabled(a.getBoolean(R.styleable.BubbleSeekBar_android_enabled, isEnabled()));
         a.recycle();
+
+        if (isColorPicker) {  // 如果是颜色拾取器的话，必须限制范围
+            mMin = COLOR_PROGRESS_MIN;
+            mMax = COLOR_PROGRESS_MAX;
+        }
 
         mPaint = new Paint();
         mPaint.setAntiAlias(true);
@@ -614,23 +629,39 @@ public class BubbleSeekBar extends View {
             }
         }
 
-        // draw track
-        mPaint.setColor(mSecondTrackColor);
-        mPaint.setStrokeWidth(mSecondTrackSize);
-        if (isRtl) {
-            canvas.drawLine(xRight, yTop, mThumbCenterX, yTop, mPaint);
+        if (isColorPicker) {  // 如果是颜色拾取器，绘制渐变背景
+            float deviation = 0.001f;
+            // 如果大小有变化才创建对象出来
+            if (!BubbleUtils.isFloatEqual(xLeft, colorPickerGrdStartX, deviation) || !BubbleUtils.isFloatEqual(xRight, colorPickerGrdEndX, deviation)) {
+                linearGradient = new LinearGradient(xLeft, 0.f, xRight, 0.0f,
+                        new int[] { 0xFF000000, 0xFF0000FF, 0xFF00FF00, 0xFF00FFFF,
+                                0xFFFF0000, 0xFFFF00FF, 0xFFFFFF00, 0xFFFFFFFF},
+                        null, Shader.TileMode.CLAMP);
+                mPaint.setShader(linearGradient);
+            }
+
+            mPaint.setStrokeWidth(mSecondTrackSize);
+            canvas.drawLine(xLeft, yTop, xRight, yTop, mPaint);
         } else {
-            canvas.drawLine(xLeft, yTop, mThumbCenterX, yTop, mPaint);
+            // draw track
+            mPaint.setColor(mSecondTrackColor);
+            mPaint.setStrokeWidth(mSecondTrackSize);
+            if (isRtl) {
+                canvas.drawLine(xRight, yTop, mThumbCenterX, yTop, mPaint);
+            } else {
+                canvas.drawLine(xLeft, yTop, mThumbCenterX, yTop, mPaint);
+            }
+
+            // draw second track
+            mPaint.setColor(mTrackColor);
+            mPaint.setStrokeWidth(mTrackSize);
+            if (isRtl) {
+                canvas.drawLine(mThumbCenterX, yTop, xLeft, yTop, mPaint);
+            } else {
+                canvas.drawLine(mThumbCenterX, yTop, xRight, yTop, mPaint);
+            }
         }
 
-        // draw second track
-        mPaint.setColor(mTrackColor);
-        mPaint.setStrokeWidth(mTrackSize);
-        if (isRtl) {
-            canvas.drawLine(mThumbCenterX, yTop, xLeft, yTop, mPaint);
-        } else {
-            canvas.drawLine(mThumbCenterX, yTop, xRight, yTop, mPaint);
-        }
 
         // draw thumb
         mPaint.setColor(mThumbColor);
@@ -1470,15 +1501,20 @@ public class BubbleSeekBar extends View {
             );
             mBubblePath.close();
 
+            if (isColorPicker) { // 如果是颜色拾取器，BubbleView实时显示当前颜色
+                mBubbleColor = BubbleUtils.progressToColor(getProgress());
+            }
             mBubblePaint.setColor(mBubbleColor);
             canvas.drawPath(mBubblePath, mBubblePaint);
 
-            mBubblePaint.setTextSize(mBubbleTextSize);
-            mBubblePaint.setColor(mBubbleTextColor);
-            mBubblePaint.getTextBounds(mProgressText, 0, mProgressText.length(), mRect);
-            Paint.FontMetrics fm = mBubblePaint.getFontMetrics();
-            float baseline = mBubbleRadius + (fm.descent - fm.ascent) / 2f - fm.descent;
-            canvas.drawText(mProgressText, getMeasuredWidth() / 2f, baseline, mBubblePaint);
+            if (!isColorPicker) {  // 颜色拾取器不显示进度数值
+                mBubblePaint.setTextSize(mBubbleTextSize);
+                mBubblePaint.setColor(mBubbleTextColor);
+                mBubblePaint.getTextBounds(mProgressText, 0, mProgressText.length(), mRect);
+                Paint.FontMetrics fm = mBubblePaint.getFontMetrics();
+                float baseline = mBubbleRadius + (fm.descent - fm.ascent) / 2f - fm.descent;
+                canvas.drawText(mProgressText, getMeasuredWidth() / 2f, baseline, mBubblePaint);
+            }
         }
 
         void setProgressText(String progressText) {

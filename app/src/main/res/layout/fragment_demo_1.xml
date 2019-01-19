@@ -10,6 +10,19 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="ColorPicker"
+        android:textSize="12sp"/>
+
+    <com.xw.repo.BubbleSeekBar
+        android:layout_width="match_parent"
+        android:layout_height="16dp"
+        android:layout_marginTop="8dp"
+        app:bsb_is_color_picker="true"
+        app:bsb_track_size="3dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:text="default"
         android:textSize="12sp"/>
 
